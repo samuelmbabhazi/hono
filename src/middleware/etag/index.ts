@@ -117,6 +117,8 @@ export const etag = (options?: ETagOptions): MiddlewareHandler => {
     const matched = ifNoneMatch === '*' || etagMatches(etag, ifNoneMatch)
 
     if (matched) {
+      // Not awaited so a slow or failing cancel() cannot delay or break the 304.
+      void res.body?.cancel().catch(() => {})
       c.res = new Response(null, {
         status: 304,
         statusText: 'Not Modified',

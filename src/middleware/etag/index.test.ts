@@ -285,6 +285,50 @@ describe('Etag Middleware', () => {
     expect(res.status).toBe(304)
   })
 
+  it('Should cancel the discarded response body on 304', async () => {
+    let cancelled = false
+    const app = new Hono()
+    app.use('/etag/*', etag())
+    app.get('/etag/stream', (c) => {
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new TextEncoder().encode('chunk'))
+        },
+        cancel() {
+          cancelled = true
+        },
+      })
+      return c.body(stream, 200, { ETag: '"stream-v1"' })
+    })
+
+    const res = await app.request('http://localhost/etag/stream', {
+      headers: { 'If-None-Match': '"stream-v1"' },
+    })
+    expect(res.status).toBe(304)
+    expect(cancelled).toBe(true)
+  })
+
+  it('Should not fail the 304 when cancelling the discarded body rejects', async () => {
+    const app = new Hono()
+    app.use('/etag/*', etag())
+    app.get('/etag/stream', (c) => {
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new TextEncoder().encode('chunk'))
+        },
+        cancel() {
+          throw new Error('cancel failed')
+        },
+      })
+      return c.body(stream, 200, { ETag: '"stream-v1"' })
+    })
+
+    const res = await app.request('http://localhost/etag/stream', {
+      headers: { 'If-None-Match': '"stream-v1"' },
+    })
+    expect(res.status).toBe(304)
+  })
+
   it('Should handle conditional QUERY requests', async () => {
     const app = new Hono()
     app.use('/etag/*', etag())
